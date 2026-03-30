@@ -1,7 +1,7 @@
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
-from src.prompts import SYSTEM_PROMPT, format_context
-from config import GROQ_MODEL, GROQ_API_KEY, TEMPERATURE
+from .prompts import SYSTEM_PROMPT
+from config import GROQ_MODEL, GROQ_API_KEY
 
 
 class Generator:
@@ -9,22 +9,29 @@ class Generator:
         self.llm = ChatGroq(
             model=GROQ_MODEL,
             groq_api_key=GROQ_API_KEY,
-            temperature=TEMPERATURE
+            temperature=0
         )
 
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", SYSTEM_PROMPT),
-            ("human", "Context:\n{context}\n\nUser Question:\n{question}\n\nAnswer using the exact required format.")
+            (
+                "human",
+                """Student Question:
+{query}
+
+Retrieved Documents:
+{context}
+
+Use only the retrieved documents above.
+Return the answer strictly in the required structure."""
+            )
         ])
 
-    def generate(self, query, docs):
-        context = format_context(docs)
+        self.chain = self.prompt | self.llm
 
-        chain = self.prompt | self.llm
-
-        response = chain.invoke({
-            "context": context,
-            "question": query
+    def generate(self, query: str, context: str) -> str:
+        response = self.chain.invoke({
+            "query": query,
+            "context": context
         })
-
         return response.content

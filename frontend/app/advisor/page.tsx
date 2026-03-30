@@ -24,11 +24,46 @@ type Message = {
 function extractSection(text: string, section: string) {
   const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const regex = new RegExp(
-    `${escaped}:\\s*([\\s\\S]*?)(?=\\n(?:Answer / Plan|Why|Citations|Clarifying questions|Assumptions / Not in catalog):|$)`,
+    `${escaped}:\\s*([\\s\\S]*?)(?=\\n(?:Answer / Plan|Decision|Course Plan|Evidence|Why|Next step|Citations|Clarifying questions|Assumptions \\/ Not in catalog):|$)`,
     "i"
   );
   const match = text.match(regex);
   return match ? match[1].trim() : "";
+}
+
+function parseLines(section: string) {
+  if (!section || section.toLowerCase() === "none") return [];
+  return section
+    .split("\n")
+    .map((line) => line.replace(/^[-•]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function getMainReply(decision: string, evidence: string, fallback: string) {
+  const cleanDecision = decision.trim();
+  const cleanEvidence = evidence.trim();
+
+  if (!cleanDecision) return fallback;
+
+  const lower = cleanDecision.toLowerCase();
+
+  if (lower === "answered from catalog") {
+    return cleanEvidence || "I found the answer in the catalog.";
+  }
+
+  if (lower === "need more info" || lower === "need more information") {
+    return "I need a bit more information to guide you properly.";
+  }
+
+  if (lower === "eligible") {
+    return "You appear eligible based on the information provided.";
+  }
+
+  if (lower === "not eligible") {
+    return "You do not appear eligible based on the information provided.";
+  }
+
+  return cleanDecision;
 }
 
 export default function AdvisorPage() {
@@ -42,7 +77,7 @@ export default function AdvisorPage() {
       "What do I need before CSE 421?",
       "Can I take CSE 446 after CSE 312 and CSE 332?",
       "What are the BSCS core courses?",
-      "Can I take 21 credits in one quarter?",
+      "Where should I start if I want to study computer science?",
     ],
     []
   );
@@ -51,12 +86,14 @@ export default function AdvisorPage() {
     const finalQuery = (customQuery ?? query).trim();
     if (!finalQuery || loading) return;
 
-    const userMessage: Message = {
-      role: "user",
-      text: finalQuery,
-    };
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        text: finalQuery,
+      },
+    ]);
 
-    setMessages((prev) => [...prev, userMessage]);
     setQuery("");
     setLoading(true);
 
@@ -90,14 +127,23 @@ export default function AdvisorPage() {
         ...prev,
         {
           role: "assistant",
-          text: `Answer / Plan:
-Unable to process your request right now.
+          text: `Decision:
+Need more info
 
-Why:
+Course Plan:
+None
+
+Evidence:
 The frontend could not connect to the backend API or the server returned an error.
 
+Why:
+The request could not be completed because the backend is unavailable.
+
+Next step:
+Make sure the backend is running and try again.
+
 Citations:
-None
+None (No relevant information found in retrieved documents)
 
 Clarifying questions:
 None
@@ -144,12 +190,18 @@ This is a system connectivity issue, not a catalog-grounding result.`,
           )}
 
           {messages.map((message, index) => {
-            const answerPlan =
-              message.role === "assistant"
-                ? extractSection(message.text, "Answer / Plan")
-                : "";
+            const decision =
+              message.role === "assistant" ? extractSection(message.text, "Decision") : "";
+            const coursePlan =
+              message.role === "assistant" ? extractSection(message.text, "Course Plan") : "";
+            const evidence =
+              message.role === "assistant" ? extractSection(message.text, "Evidence") : "";
             const why =
               message.role === "assistant" ? extractSection(message.text, "Why") : "";
+            const nextStep =
+              message.role === "assistant" ? extractSection(message.text, "Next step") : "";
+            const citations =
+              message.role === "assistant" ? extractSection(message.text, "Citations") : "";
             const clarifying =
               message.role === "assistant"
                 ? extractSection(message.text, "Clarifying questions")
@@ -159,22 +211,30 @@ This is a system connectivity issue, not a catalog-grounding result.`,
                 ? extractSection(message.text, "Assumptions / Not in catalog")
                 : "";
 
-            const clarifyingItems =
-              clarifying && clarifying.toLowerCase() !== "none"
-                ? clarifying
-                    .split("\n")
-                    .map((item) => item.replace(/^[-•]\s*/, "").trim())
-                    .filter(Boolean)
+            const planItems = parseLines(coursePlan);
+            const clarifyingItems = parseLines(clarifying);
+            const citationItems =
+              citations &&
+              citations.toLowerCase() !== "none" &&
+              !citations.toLowerCase().startsWith("none (")
+                ? citations.split("\n").map((line) => line.trim()).filter(Boolean)
                 : [];
+
+            const isOpen = openDetailsIndex === index;
 
             const hasDetails =
               message.role === "assistant" &&
-              (why ||
-                assumptions ||
+              (planItems.length > 0 ||
+                why ||
+                nextStep ||
+                citationItems.length > 0 ||
                 clarifyingItems.length > 0 ||
-                (message.sources && message.sources.length > 0));
+                (assumptions && assumptions.toLowerCase() !== "none"));
 
-            const isOpen = openDetailsIndex === index;
+            const mainReply =
+              message.role === "assistant"
+                ? getMainReply(decision, evidence, message.text)
+                : message.text;
 
             return (
               <div key={index} className="space-y-3">
@@ -184,7 +244,7 @@ This is a system connectivity issue, not a catalog-grounding result.`,
                   }`}
                 >
                   {message.role === "assistant" && (
-                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white">
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#4b2e83] text-white">
                       <Bot className="h-4 w-4" />
                     </div>
                   )}
@@ -201,14 +261,26 @@ This is a system connectivity issue, not a catalog-grounding result.`,
                     ) : (
                       <div className="space-y-3">
                         <p className="whitespace-pre-wrap text-[15px] leading-7">
-                          {answerPlan || message.text}
+                          {mainReply}
                         </p>
+
+                        {clarifyingItems.length > 0 && (
+                          <div className="mt-1 space-y-2">
+                            {clarifyingItems.map((q, i) => (
+                              <button
+                                key={i}
+                                onClick={() => handleAsk(q)}
+                                className="block w-fit rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-200"
+                              >
+                                {q}
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                         {hasDetails && (
                           <button
-                            onClick={() =>
-                              setOpenDetailsIndex(isOpen ? null : index)
-                            }
+                            onClick={() => setOpenDetailsIndex(isOpen ? null : index)}
                             className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-700"
                           >
                             {isOpen ? (
@@ -225,7 +297,31 @@ This is a system connectivity issue, not a catalog-grounding result.`,
 
                         {hasDetails && isOpen && (
                           <div className="space-y-4 rounded-2xl bg-slate-50 p-4">
-                            {why && (
+                            {decision && (
+                              <div>
+                                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                  Decision
+                                </h3>
+                                <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                                  {decision}
+                                </p>
+                              </div>
+                            )}
+
+                            {planItems.length > 0 && (
+                              <div>
+                                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                  Course Plan
+                                </h3>
+                                <ul className="space-y-2 text-sm leading-7 text-slate-700">
+                                  {planItems.map((item, itemIndex) => (
+                                    <li key={`${item}-${itemIndex}`}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {why && why.toLowerCase() !== "none" && (
                               <div>
                                 <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                   Why
@@ -236,52 +332,43 @@ This is a system connectivity issue, not a catalog-grounding result.`,
                               </div>
                             )}
 
-                            {message.sources && message.sources.length > 0 && (
+                            {nextStep && nextStep.toLowerCase() !== "none" && (
                               <div>
-                                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                  Sources
+                                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                  Next Step
                                 </h3>
-                                <div className="space-y-2">
-                                  {message.sources.map((src, srcIndex) => (
-                                    <div
-                                      key={`${src.source}-${srcIndex}`}
-                                      className="rounded-xl border border-slate-200 bg-white p-3"
-                                    >
-                                      <p className="text-sm font-semibold text-slate-800">
-                                        {src.course_code ? `${src.course_code} · ` : ""}
-                                        {src.source}
-                                      </p>
-                                      <p className="mt-1 text-xs text-slate-500">
-                                        {src.type || "unknown"}
-                                      </p>
-                                      {src.source_url && (
-                                        <p className="mt-1 break-all text-xs text-slate-500">
-                                          {src.source_url}
-                                        </p>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
+                                <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                                  {nextStep}
+                                </p>
                               </div>
                             )}
 
-                            {clarifyingItems.length > 0 && (
-                              <div>
-                                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                  Clarifying questions
-                                </h3>
-                                <ul className="list-disc space-y-1 pl-5 text-sm leading-7 text-slate-700">
-                                  {clarifyingItems.map((item, itemIndex) => (
-                                    <li key={`${item}-${itemIndex}`}>{item}</li>
+                            <div>
+                              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Citations
+                              </h3>
+                              {citationItems.length > 0 ? (
+                                <div className="space-y-2">
+                                  {citationItems.map((item, itemIndex) => (
+                                    <div
+                                      key={`${item}-${itemIndex}`}
+                                      className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700"
+                                    >
+                                      {item}
+                                    </div>
                                   ))}
-                                </ul>
-                              </div>
-                            )}
+                                </div>
+                              ) : (
+                                <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-500">
+                                  None (No relevant information found in retrieved documents)
+                                </div>
+                              )}
+                            </div>
 
                             {assumptions && assumptions.toLowerCase() !== "none" && (
                               <div>
                                 <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                  Assumptions
+                                  Assumptions / Not in catalog
                                 </h3>
                                 <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
                                   {assumptions}
@@ -306,7 +393,7 @@ This is a system connectivity issue, not a catalog-grounding result.`,
 
           {loading && (
             <div className="flex justify-start gap-3">
-              <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-white">
+              <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-[#4b2e83] text-white">
                 <Bot className="h-4 w-4" />
               </div>
               <div className="rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
@@ -319,7 +406,7 @@ This is a system connectivity issue, not a catalog-grounding result.`,
           )}
         </div>
 
-        <div className="sticky bottom-0 mt-6 bg-gradient-to-t from-[#f7f7f8] via-[#f7f7f8] to-transparent pt-6">
+        <div className="sticky bottom-0 mt-10 bg-gradient-to-t from-[#f7f7f8] via-[#f7f7f8] to-transparent pt-6">
           <div className="rounded-[28px] border border-slate-200 bg-white p-3 shadow-lg">
             <div className="flex items-end gap-3">
               <textarea

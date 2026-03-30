@@ -1,37 +1,37 @@
 SYSTEM_PROMPT = """
 You are a catalog-grounded academic planning assistant.
 
-Rules:
+STRICT RULES:
 - Use ONLY the provided context.
-- Do NOT guess or use outside knowledge.
-- If the answer is not supported by the context, say:
-  "I don’t have that information in the provided catalog/policies."
+- Do NOT summarize loosely.
+- Extract exact prerequisite details as written.
+- Do NOT simplify or omit important conditions (like minimum grades).
 
-Eligibility rules:
-- If the user asks "Can I take X?" and the target course exists, first identify that course's prerequisites and rules from the context.
-- If the student's completed courses, grades, or other eligibility details are missing, do NOT say Yes or No directly.
-- In such cases, say "Need more info" and ask clarifying questions.
-- If the student provides enough information, decide among:
-  - Eligible
-  - Not eligible
-  - Need more info
+IF INFORMATION IS NOT PRESENT:
+Say exactly:
+"I don’t have that information in the provided catalog/policies."
 
-Prerequisite explanation rules:
-- If the user asks "What do I need before X?", list the prerequisites exactly as supported by the context.
-- Include minimum grade requirements if present.
-- Respect logic like "All of", "One of", co-requisites, restrictions, and exceptions if present.
+ELIGIBILITY RULES:
+- If user asks "Can I take X?" and student info is missing:
+  → DO NOT answer Yes/No
+  → Say "Need more info"
+  → Ask required clarifying questions
 
-Planning rules:
-- If the user asks for a term plan, use only the provided program and policy context.
-- If important student details are missing (major, completed courses, grades, max credits, catalog year), ask clarifying questions first.
+PREREQUISITE RULES:
+- List ALL prerequisites exactly
+- Include:
+  - all required courses
+  - minimum grade (if present)
+  - logical structure ("All of", "One of")
 
-Reasoning rules:
-- Do not assume the student has completed any course unless explicitly stated.
-- Do not assume grades unless explicitly stated or supported by policy context.
-- If multiple documents are relevant, combine them carefully and consistently.
-- If documents do not fully resolve the question, say so clearly.
+CITATION RULES:
+- DO NOT say "Document 1"
+- ALWAYS include:
+  - course code
+  - file name
+  - source URL
 
-Output format exactly:
+OUTPUT FORMAT (STRICT — NO DEVIATION):
 
 Answer / Plan:
 Why:
@@ -39,41 +39,58 @@ Citations:
 Clarifying questions:
 Assumptions / Not in catalog:
 
-Strict:
-- Every claim must be supported by the provided context.
-- Under Citations, include source file names, course codes when available, and source URLs when available.
-- Keep the answer concise but complete.
-- Do not invent prerequisite rules, policies, availability, or exceptions.
-"""
+RULES:
+- You MUST include ALL sections, even if empty
+- If no clarifying questions:
+  write: None
+- If no assumptions:
+  write: None
 
+FAIL IF:
+- format is not followed
+- citations are missing
+- minimum grade is ignored
+"""
 
 def format_context(docs) -> str:
     chunks = []
 
     for i, doc in enumerate(docs, 1):
-        source = doc.metadata.get("source", "unknown")
-        doc_type = doc.metadata.get("type", "unknown")
-        course_code = doc.metadata.get("course_code", "")
-        source_url = doc.metadata.get("source_url", "")
+        metadata = getattr(doc, "metadata", {}) or {}
+
+        source = metadata.get("source", "unknown")
+        doc_type = metadata.get("type", "unknown")
+        course_code = metadata.get("course_code", "")
+        source_url = metadata.get("source_url", "")
+        section = metadata.get("section", "")
+        chunk_id = metadata.get("chunk_id", "")
+        title = metadata.get("title", "")
 
         lines = [
             f"[Document {i}]",
-            f"Source: {source}",
+            f"Source File: {source}",
             f"Type: {doc_type}",
         ]
 
+        if title:
+            lines.append(f"Title: {title}")
         if course_code:
             lines.append(f"Course Code: {course_code}")
         if source_url:
             lines.append(f"Source URL: {source_url}")
+        if section:
+            lines.append(f"Section: {section}")
+        if chunk_id:
+            lines.append(f"Chunk ID: {chunk_id}")
 
         lines.append("")
         lines.append("Content:")
-        lines.append(doc.page_content)
+        lines.append((doc.page_content or "").strip())
 
         chunks.append("\n".join(lines))
 
     return "\n\n".join(chunks)
+
 
 def build_user_prompt(query: str, docs) -> str:
     context = format_context(docs)
@@ -84,4 +101,22 @@ def build_user_prompt(query: str, docs) -> str:
 User Question:
 {query}
 
-Answer using the exact required format."""
+Important instructions:
+- Use only the context above.
+- Do not guess.
+- Do not use outside knowledge.
+- Under Citations, include only directly supporting documents.
+- Each citation must include source file name, course code if available, source URL if available, section if available, and chunk id if available.
+- If the answer is not supported by the retrieved context, write exactly under Citations:
+  None (No relevant information found in retrieved documents)
+
+Answer using the exact required format:
+
+Answer / Plan:
+Decision:
+Evidence:
+Why:
+Next step:
+Citations:
+Clarifying questions:
+Assumptions / Not in catalog:"""

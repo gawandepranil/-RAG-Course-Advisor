@@ -16,12 +16,15 @@ app.add_middleware(
 
 rag = RAGPipeline()
 
+
 class AskRequest(BaseModel):
     query: str
+
 
 @app.get("/")
 def root():
     return {"message": "Backend running"}
+
 
 @app.post("/ask")
 def ask_question(request: AskRequest):
@@ -29,7 +32,29 @@ def ask_question(request: AskRequest):
 
     if not query:
         return {
-            "answer": "Please enter a question.",
+            "answer": """Decision:
+Need more info
+
+Course Plan:
+None
+
+Evidence:
+No question was provided.
+
+Why:
+The request is empty, so there is nothing to evaluate from the catalog context.
+
+Next step:
+Enter a question about prerequisites, policies, or degree planning.
+
+Citations:
+None (No relevant information found in retrieved documents)
+
+Clarifying questions:
+None
+
+Assumptions / Not in catalog:
+None""",
             "retrieved_sources": []
         }
 
