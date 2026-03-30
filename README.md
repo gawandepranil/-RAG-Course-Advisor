@@ -3,37 +3,7 @@
 An AI-powered academic planning assistant built using Retrieval-Augmented Generation (RAG) to provide **catalog-grounded, explainable, and policy-aware course guidance** for University of Washington pathways.
 
 ---
-rag-course-advisor/
-│
-├── app/                      # FastAPI backend
-│   ├── api.py
-│   └── main.py
-│
-├── src/                      # Core RAG pipeline
-│   ├── ingestion.py
-│   ├── retriever.py
-│   ├── generator.py
-│   ├── pipeline.py
-│   ├── vector_store.py
-│   ├── prompt.py
-│   └── embeddings.py
-│
-├── data/
-│   ├── courses/
-│   ├── policies/
-│   ├── programs/
-│   └── documents.json
-│
-├── models/
-│   └── faiss_index/          # (ignored in git)
-│
-├── frontend/                 # Next.js app
-│
-├── evaluation_results.md     # REQUIRED
-├── README.md                 # VERY IMPORTANT
-├── requirements.txt
-├── .gitignore
-└── .env
+
 
 ## 🚀 Key Features
 
