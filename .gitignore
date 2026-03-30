@@ -1,0 +1,26 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+
+# ML Models
+*.pkl
+*.joblib
+*.pt
+*.bin
+models/
+
+# Data files
+data/
+*.csv
+*.xlsx
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

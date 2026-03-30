@@ -1,0 +1,13 @@
+langchain
+langchain-community
+langchain-huggingface
+langchain-groq
+sentence-transformers
+faiss-cpu
+python-dotenv
+groq
+transformers
+torch
+accelerate
+fastapi
+uvicorn
